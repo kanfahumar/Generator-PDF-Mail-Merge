@@ -1,0 +1,25 @@
+{
+  "name": "undangan-web",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Pembuat undangan PDF massal. Berjalan 100% di browser - file tidak pernah meninggalkan komputer.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@pdf-lib/fontkit": "^1.1.1",
+    "fflate": "^0.8.2",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.5",
+    "vitest": "^3.2.4"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true
+  }
+}
