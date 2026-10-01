@@ -12,10 +12,39 @@ export function jenisHanyaSpasi(teks) {
   return String(teks ?? '').trim() === '';
 }
 
-/** Lebar teks dalam point. String kosong lebarnya 0. */
+/**
+ * Lebar teks dalam point. String kosong lebarnya 0.
+ * pdf-lib memberi PDFFont dengan method widthOfTextAtSize; pengukur uji
+ * memakai getWidthOfTextAtSize. Keduanya didukung.
+ */
 export function lebarTeks(teks, pengukur, ukuran) {
   if (jenisHanyaSpasi(teks)) return 0;
+  if (typeof pengukur.widthOfTextAtSize === 'function') {
+    return pengukur.widthOfTextAtSize(teks, ukuran);
+  }
   return pengukur.getWidthOfTextAtSize(teks, ukuran);
+}
+
+/**
+ * Fontkit font di balik pengukur, atau null bila tidak tersedia.
+ * Menerima: objek fontkit langsung, PDFFont pdf-lib (getFont()), atau
+ * pengukur uji yang menyimpan font di properti `font`.
+ */
+function fontkitFont(pengukur) {
+  const punyaMetode =
+    typeof pengukur.hasGlyphForCodePoint === 'function' ||
+    typeof pengukur.glyphIndicesForString === 'function';
+  if (punyaMetode) return pengukur;
+
+  if (typeof pengukur.getFont === 'function') {
+    try {
+      const f = pengukur.getFont();
+      if (f) return f;
+    } catch {
+      /* lanjut */
+    }
+  }
+  return pengukur.font ?? null;
 }
 
 /** Tinggi blok teks dalam point. */
@@ -137,25 +166,23 @@ export function posisiYCenter(baris, yKotak, tinggiKotak, ukuran, jarakBaris) {
  * boleh menggagalkan pembuatan undangan.
  */
 export function hurufTakDidukung(teks, pengukur) {
-  let font;
-  try {
-    font = pengukur.getFont();
-  } catch {
-    return [];
-  }
-  if (!font || typeof font.glyphIndicesForString !== 'function') return [];
+  const font = fontkitFont(pengukur);
+  if (!font) return [];
 
-  const unik = [...new Set([...String(teks ?? '')])].filter(
-    (c) => !/[\s\u00a0\u2007\u202f]/.test(c)
-  );
+  const unik = [
+    ...new Set([...(String(teks ?? '').normalize('NFC'))]),
+  ].filter((c) => !/[\s\u00a0\u2007\u202f]/.test(c));
   if (unik.length === 0) return [];
 
   try {
-    const belum = unik.filter(
-      (c) => (font.glyphIndicesForString(c)[0] ?? 0) === 0
-    );
-    return belum;
+    if (typeof font.hasGlyphForCodePoint === 'function') {
+      return unik.filter((c) => !font.hasGlyphForCodePoint(c.codePointAt(0)));
+    }
+    if (typeof font.glyphIndicesForString === 'function') {
+      return unik.filter((c) => (font.glyphIndicesForString(c)[0] ?? 0) === 0);
+    }
   } catch {
-    return [];
+    /* pemeriksaan glyph tidak boleh menggagalkan pembuatan */
   }
+  return [];
 }
