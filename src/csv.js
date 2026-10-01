@@ -23,6 +23,17 @@ export function normalkanNilai(nilai) {
 }
 
 /**
+ * Sebuah baris dianggap "kosong" (bukan data) hanya bila tidak punya sel
+ * sama sekali - yaitu baris kosong di antara data. Baris seperti `,"  "` tetap
+ * dianggap data karena memang berisi satu tamu yang kolomnya kosong.
+ */
+function barisValid(sel) {
+  if (sel.length === 0) return false;
+  if (sel.length === 1 && normalkanNilai(sel[0]) === '') return false;
+  return true;
+}
+
+/**
  * Parser RFC 4180 sederhana. Mengembalikan array of array of string mentah.
  * Baris kosong sepenuhnya dilewati.
  */
@@ -61,9 +72,7 @@ export function parseCsv(teks) {
       if (c === '\r' && isi[i + 1] === '\n') i++;
       mulaiBaris.push(sel);
       sel = '';
-      if (mulaiBaris.some((s) => normalkanNilai(s) !== '')) {
-        baris.push(mulaiBaris);
-      }
+      if (barisValid(mulaiBaris)) baris.push(mulaiBaris);
       mulaiBaris = [];
     } else {
       sel += c;
@@ -71,9 +80,7 @@ export function parseCsv(teks) {
   }
 
   mulaiBaris.push(sel);
-  if (mulaiBaris.some((s) => normalkanNilai(s) !== '')) {
-    baris.push(mulaiBaris);
-  }
+  if (barisValid(mulaiBaris)) baris.push(mulaiBaris);
 
   return baris;
 }

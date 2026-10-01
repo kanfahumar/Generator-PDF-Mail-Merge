@@ -2,21 +2,17 @@
  * UI: render preview PDF, klik-tarik kotak, dan kontrol properti kotak.
  */
 
-import { pxKePt, ptKePx, ptKeMm, buatKotakDariTarik, kotakKePx } from './geometry.js';
+import { buatKotakDariTarik, kotakKePx, pxKePt, PT_PER_PX } from './geometry.js';
 
-const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.min.mjs';
-let pdfjsLib = null;
+/** 96 DPI: pdf.js merender 1 point PDF menjadi 1,333 piksel kanvas. */
+const SKALA_96_DPI = 1 / PT_PER_PX;
 
-async function loadPdfjs() {
-  if (pdfjsLib) return pdfjsLib;
-  const mod = await import(/* @vite-ignore */ PDFJS_CDN);
-  pdfjsLib = mod;
-  if (pdfjsLib.GlobalWorkerOptions) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.6.82/pdf.worker.min.mjs';
-  }
-  return pdfjsLib;
-}
+// pdf.js ikut dibundel (bukan dari CDN) supaya aplikasi tetap jalan tanpa
+// koneksi internet dan tidak memanggil domain luar sama sekali.
+import * as pdfjsLib from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
 export class PanelKotak {
   constructor({ kanvas, kontainer, selectKolom, inputUkuran, inputMinUkuran, inputWarna, inputJarakBaris, barisProperti }) {
@@ -33,6 +29,8 @@ export class PanelKotak {
     this.halamanAktif = 0;
     this.lebarHalamanPt = 0;
     this.tinggiHalamanPt = 0;
+    this.tinggiHalamanPx = 0;
+    this.lebarHalamanPx = 0;
     this.skalaLayar = 1;
     this.pdfRender = null;
     this.kotak = [];
@@ -58,17 +56,22 @@ export class PanelKotak {
 
   async renderHalaman() {
     if (!this.template) return;
-    const pdfjs = await loadPdfjs();
-    const buf = this.template.bytes.buffer.slice(0);
-    const doc = await pdfjs.getDocument({ data: buf }).promise;
+    const buf = this.template.bytes.slice().buffer;
+    const doc = await pdfjsLib.getDocument({ data: buf }).promise;
     const page = await doc.getPage(this.halamanAktif + 1);
-    const viewport = page.getViewport({ scale: 1.5 });
-    this.skalaLayar = viewport.width / this.lebarHalamanPt;
-    const v2 = page.getViewport({ scale: (this.skalaLayar * 96) / 96 });
+
+    // Render pada 96 DPI (skala 96/72) supaya 1 point PDF = 1,333 piksel
+    // piksel. Dengan begitu canvas tampil pada ukuran aslinya tanpa penskalaan
+    // CSS, dan konversi kotak di geometry.js (PT_PER_PX) langsung akurat.
+    const viewport = page.getViewport({ scale: SKALA_96_DPI });
+    this.lebarHalamanPx = viewport.width;
+    this.tinggiHalamanPx = viewport.height;
+    this.skalaLayar = SKALA_96_DPI;
+
     const ctx = this.kanvas.getContext('2d');
-    this.kanvas.width = Math.round(v2.width);
-    this.kanvas.height = Math.round(v2.height);
-    await page.render({ canvasContext: ctx, viewport: v2 }).promise;
+    this.kanvas.width = Math.round(viewport.width);
+    this.kanvas.height = Math.round(viewport.height);
+    await page.render({ canvasContext: ctx, viewport }).promise;
     this.refresh();
   }
 
@@ -212,7 +215,7 @@ export class PanelKotak {
   refresh() {
     this.kontainer.innerHTML = '';
     if (this.drag && this.drag.mode === 'new') {
-      const r = { ...buatKotakDariTarik(this.drag), halaman: this.halamanAktif };
+      const r = { ...buatKotakDariTarik(this.drag, this.tinggiHalamanPx), halaman: this.halamanAktif };
       const el = this.buatElKotak(r, this.kotak.length, true);
       this.kontainer.appendChild(el);
     }
@@ -224,7 +227,7 @@ export class PanelKotak {
   }
 
   buatElKotak(k, index, terpilih) {
-    const p = kotakKePx(k);
+    const p = kotakKePx(k, this.tinggiHalamanPx);
     const el = document.createElement('div');
     el.className = 'kotak' + (terpilih ? ' terpilih' : '');
     el.dataset.index = String(index);
