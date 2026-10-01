@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pembuat Undangan PDF</title>
+    <meta
+      name="description"
+      content="Buat undangan PDF massal dari satu desain PDF dan daftar CSV. Semua diproses di browser - file Anda tidak pernah meninggalkan komputer."
+    />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header class="kepala">
+      <h1>Pembuat Undangan PDF</h1>
+      <p class="sub">
+        Tempelkan nama &amp; alamat tamu ke desain undangan Anda. File Anda diproses
+        di browser — tidak ada yang dikirim ke server.
+      </p>
+    </header>
+
+    <main>
+      <!-- ============ LANGKAH 1: PILIH PDF ============ -->
+      <section class="langkah" id="langkah-1">
+        <h2><span class="nomor">1</span> Pilih file PDF desain</h2>
+        <p class="petunjuk">
+          File desain undangan Anda (dari Word, Canva, atau Inkscape, diekspor
+          sebagai PDF).
+        </p>
+        <label class="tombol-pilih" for="input-pdf">
+          <span id="label-pdf">Pilih file PDF…</span>
+          <input id="input-pdf" type="file" accept="application/pdf,.pdf" hidden />
+        </label>
+        <p class="nama-berkas" id="info-pdf"></p>
+      </section>
+
+      <!-- ============ LANGKAH 2: PILIH CSV ============ -->
+      <section class="langkah" id="langkah-2">
+        <h2><span class="nomor">2</span> Pilih file CSV daftar tamu</h2>
+        <p class="petunjuk">
+          Dua kolom: <code>nama</code> dan <code>alamat</code>. Dari Excel, pilih
+          "Simpan sebagai" → <em>CSV UTF-8</em>.
+        </p>
+        <label class="tombol-pilih" for="input-csv">
+          <span id="label-csv">Pilih file CSV…</span>
+          <input id="input-csv" type="file" accept=".csv,text/csv" hidden />
+        </label>
+        <p class="nama-berkas" id="info-csv"></p>
+        <div id="ringkasan-csv" class="ringkasan" hidden></div>
+      </section>
+
+      <!-- ============ LANGKAH 3: FONT ============ -->
+      <section class="langkah" id="langkah-3">
+        <h2><span class="nomor">3</span> Pilih file font</h2>
+        <p class="petunjuk">
+          Font <code>.ttf</code> untuk nama dan alamat. Font ini akan tertanam di
+          dalam PDF hasil, jadi penerima undangan tidak perlu punya font yang sama.
+        </p>
+        <label class="tombol-pilih" for="input-font">
+          <span id="label-font">Pilih file font (.ttf)…</span>
+          <input id="input-font" type="file" accept=".ttf,.otf,font/ttf" hidden />
+        </label>
+        <p class="nama-berkas" id="info-font"></p>
+      </section>
+
+      <!-- ============ LANGKAH 4: ATUR POSISI ============ -->
+      <section class="langkah" id="langkah-4">
+        <h2><span class="nomor">4</span> Atur posisi tulisan</h2>
+        <p class="petunjuk">
+          Klik-tarik di atas kertas untuk membuat kotak di tempat teks akan muncul.
+          <strong>Kotak ini tidak akan tercetak</strong> — hanya teksnya.
+        </p>
+
+        <div class="perkakas">
+          <div class="baris-alat">
+            <label>
+              Isi dengan
+              <select id="pilih-kolom"></select>
+            </label>
+            <button type="button" id="tombol-tambah" class="kecil">+ Tambah kotak</button>
+            <button type="button" id="tombol-hapus" class="kecil bahaya">Hapus dipilih</button>
+            <button type="button" id="tombol-contoh" class="kecil">Coba isi</button>
+          </div>
+
+          <div class="baris-alat" id="baris-properti" hidden>
+            <label>
+              Ukuran huruf
+              <input type="range" id="input-ukuran" min="6" max="60" step="0.5" />
+              <output id="nilai-ukuran"></output>
+            </label>
+            <label>
+              Ukuran terkecil
+              <input type="number" id="input-min-ukuran" min="4" max="60" step="0.5" />
+            </label>
+            <label>
+              Warna
+              <input type="color" id="input-warna" value="#000000" />
+            </label>
+            <label>
+              Jarak baris
+              <input type="number" id="input-jarak-baris" min="1" max="3" step="0.05" />
+            </label>
+          </div>
+        </div>
+
+        <div class="area-kertas">
+          <div id="kertas" class="kertas">
+            <canvas id="kanvas"></canvas>
+            <div id="kontainer-kotak" class="kontainer-kotak"></div>
+          </div>
+        </div>
+
+        <p class="info-kotak" id="info-kotak">
+          Belum ada kotak. Klik-tarik di atas kertas untuk membuat kotak pertama.
+        </p>
+      </section>
+
+      <!-- ============ LANGKAH 5: BUAT ============ -->
+      <section class="langkah" id="langkah-5">
+        <h2><span class="nomor">5</span> Buat dan unduh</h2>
+        <p class="petunjuk">
+          Semua PDF dikirim ke folder <em>Downloads</em> komputer Anda sebagai satu
+          file ZIP.
+        </p>
+        <label class="checkbox">
+          <input type="checkbox" id="input-nama-berkas" checked />
+          <span>Nama berkas memakai nama tamu (contoh: <code>Budi_Santoso.pdf</code>)</span>
+        </label>
+        <button type="button" id="tombol-buat" class="besar" disabled>
+          Buat Undangan
+        </button>
+        <div id="kemajuan" class="kemajuan" hidden>
+          <div class="batang"><div id="batang-isi"></div></div>
+          <p id="teks-kemajuan"></p>
+        </div>
+        <div id="hasil" class="hasil" hidden></div>
+      </section>
+    </main>
+
+    <div id="pesan" class="pesan" hidden></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
