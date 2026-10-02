@@ -135,7 +135,9 @@ function buatKotakDefault() {
   for (const opt of kolom) {
     const k = panel.tambahKotak(opt.value);
     if (!k) continue;
-    k.y = panel.tinggiHalamanPt * 0.4 + i * 90;
+    // Di PDF, y besar = letak TINGGI di halaman. Kotak ke-2 harus berada di
+    // BAWAH kotak ke-1, jadi y-nya dikurangi, bukan ditambah.
+    k.y = Math.max(0, panel.tinggiHalamanPt * 0.4 - i * 90);
     i += 1;
   }
   panel.refresh();

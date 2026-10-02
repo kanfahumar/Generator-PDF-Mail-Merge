@@ -266,3 +266,88 @@ describe('ketergantungan urutan (bug ke-2)', () => {
     expect(teksTercetak.join(' ')).toContain('Budi Santoso Wibowo');
   });
 });
+
+describe('sumbu Y harus mengikuti gerakan mouse (laporan bug)', () => {
+  const TINGGI = 841.89;
+
+  function panelSiap() {
+    const p = buatPanel();
+    p.setTemplate(template);
+    p.tinggiHalamanPx = (TINGGI * 96) / 72;
+    p.lebarHalamanPx = (595.28 * 96) / 72;
+    p.skalaLayar = 96 / 72;
+    p.setKolom(['nama', 'alamat']);
+    return p;
+  }
+
+  it('menggeser kotak ke BAWAH layar menurunkan nilai y PDF', () => {
+    const p = panelSiap();
+    const k = p.tambahKotak('nama');
+    const yAwal = k.y;
+
+    // Tahan kotak lalu geser 60px ke bawah
+    p.onPointerDown({ clientX: 0, clientY: 0, target: p.kontainer, preventDefault() {} });
+    p.kotak[0].el = null;
+    // Simulasikan mulai drag pada kotak yang sudah ada
+    p.terpilih = 0;
+    const idx = 0;
+    p.drag = { mode: 'move', index: idx, startX: 100, startY: 100, k: { ...p.kotak[idx] } };
+    p.onPointerMove({ clientX: 100, clientY: 160 }); // 60px ke bawah
+
+    expect(p.kotak[0].y).toBeLessThan(yAwal);
+    // 60px / (96/72) = 45pt ke bawah
+    expect(yAwal - p.kotak[0].y).toBeCloseTo(45, 0);
+  });
+
+  it('menggeser kotak ke ATAS layar menaikkan nilai y PDF', () => {
+    const p = panelSiap();
+    p.tambahKotak('nama');
+    const yAwal = p.kotak[0].y;
+    p.drag = { mode: 'move', index: 0, startX: 100, startY: 100, k: { ...p.kotak[0] } };
+    p.onPointerMove({ clientX: 100, clientY: 40 }); // 60px ke atas
+    expect(p.kotak[0].y).toBeGreaterThan(yAwal);
+  });
+
+  it('kotak yang digeser tetap berada di dalam halaman', () => {
+    const p = panelSiap();
+    p.tambahKotak('nama');
+    p.drag = { mode: 'move', index: 0, startX: 100, startY: 100, k: { ...p.kotak[0] } };
+    p.onPointerMove({ clientX: 100, clientY: 99999 });
+    expect(p.kotak[0].y).toBeGreaterThanOrEqual(0);
+    p.drag = { mode: 'move', index: 0, startX: 100, startY: 100, k: { ...p.kotak[0] } };
+    p.onPointerMove({ clientX: 100, clientY: -99999 });
+    expect(p.kotak[0].y + p.kotak[0].tinggi).toBeLessThanOrEqual(TINGGI + 0.01);
+  });
+
+  it('menyeret handle bawah ke bawah justru memperbesar kotak ke bawah', () => {
+    const p = panelSiap();
+    p.tambahKotak('nama');
+    const sebelum = { y: p.kotak[0].y, tinggi: p.kotak[0].tinggi };
+    p.drag = { mode: 'resize', index: 0, startX: 100, startY: 100, k: { ...p.kotak[0] } };
+    p.onPointerMove({ clientX: 100, clientY: 160 }); // 60px ke bawah
+
+    // Sisi atas kotak tidak boleh bergeser
+    const atasSebelum = sebelum.y + sebelum.tinggi;
+    const atasSesudah = p.kotak[0].y + p.kotak[0].tinggi;
+    expect(atasSesudah).toBeCloseTo(atasSebelum, 1);
+    // Sisi bawah turun, jadi tinggi bertambah
+    expect(p.kotak[0].tinggi).toBeGreaterThan(sebelum.tinggi);
+  });
+
+  it('kotak otomatis tersusun ke BAWAH pada layar, bukan ke atas', () => {
+    // Di PDF, y besar = letak tinggi di halaman. Kotak pertama (nama) harus
+    // muncul di ATAS kotak kedua (alamat) => y(nama) > y(alamat).
+    const p = panelSiap();
+    const kolom = p.selectKolom.querySelectorAll('option');
+    let i = 0;
+    for (const opt of kolom) {
+      const k = p.tambahKotak(opt.value);
+      k.y = Math.max(0, p.tinggiHalamanPt * 0.4 - i * 90);
+      i += 1;
+    }
+    const [nama, alamat] = p.getKotak();
+    expect(nama.kunci).toBe('nama');
+    expect(alamat.kunci).toBe('alamat');
+    expect(nama.y).toBeGreaterThan(alamat.y);
+  });
+});

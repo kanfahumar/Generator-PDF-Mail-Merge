@@ -211,8 +211,13 @@ export class PanelKotak {
       const dx = (e.clientX - this.drag.startX) / this.skalaLayar;
       const dy = (e.clientY - this.drag.startY) / this.skalaLayar;
       const k = this.kotak[this.drag.index];
+      // y PDF diukur dari bawah halaman. Mouse ke bawah layar berarti y PDF
+      // HARUS turun (berkurang), kalau tidak kotaknya bergerak terbalik.
       k.x = Math.max(0, Math.min(this.lebarHalamanPt - k.lebar, this.drag.k.x + dx));
-      k.y = Math.max(0, Math.min(this.tinggiHalamanPt - k.tinggi, this.drag.k.y + dy));
+      k.y = Math.max(
+        0,
+        Math.min(this.tinggiHalamanPt - k.tinggi, this.drag.k.y - dy)
+      );
       this.refresh();
       return;
     }
@@ -222,8 +227,16 @@ export class PanelKotak {
       const k = this.kotak[this.drag.index];
       k.lebar = Math.max(20, this.drag.k.lebar + dx);
       k.tinggi = Math.max(10, this.drag.k.tinggi + dy);
+      // Handle ada di pojok kanan-BAWAH di layar, yaitu tepi bawah PDF.
+      // Menyeret ke bawah harus menambah tinggi ke bawah (y turun), bukan
+      // mengangkat sisi atas ke atas.
+      if (k.y - dy < 0) {
+        k.tinggi = Math.max(10, k.tinggi + k.y);
+        k.y = 0;
+      } else {
+        k.y = this.drag.k.y - dy;
+      }
       if (k.x + k.lebar > this.lebarHalamanPt) k.lebar = this.lebarHalamanPt - k.x;
-      if (k.y + k.tinggi > this.tinggiHalamanPt) k.tinggi = this.tinggiHalamanPt - k.y;
       this.refresh();
     }
   }

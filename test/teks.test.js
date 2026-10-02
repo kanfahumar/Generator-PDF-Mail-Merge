@@ -6,7 +6,7 @@ import {
   pecahBaris,
   ukurFont,
   posisiXCenter,
-  posisiYCenter,
+  posisiYBarisPertama,
   hurufTakDidukung,
   HasilUkuran,
 } from '../src/teks.js';
@@ -113,14 +113,6 @@ describe('posisiXCenter', () => {
   });
 });
 
-describe('posisiYCenter', () => {
-  it('memposisikan blok teks di tengah secara optis', () => {
-    const y1 = posisiYCenter(['Budi'], 300, 100, 24, 1.2);
-    const y2 = posisiYCenter(['Budi', 'Santoso'], 300, 100, 24, 1.2);
-    expect(y2).toBeLessThan(y1);
-  });
-});
-
 describe('hurufTakDidukung', () => {
   it('mengembalikan karakter unik yang tidak ada glyph-nya', () => {
     const pengukur = {
@@ -143,5 +135,24 @@ describe('hurufTakDidukung', () => {
       },
     };
     expect(hurufTakDidukung('a b', pengukur)).toEqual([]);
+  });
+});
+
+describe('posisiYBarisPertama', () => {
+  it('mengembalikan baseline baris PALING ATAS dalam kotak', () => {
+    const y = posisiYBarisPertama(['Budi', 'Santoso'], 300, 100, 24, 1.2);
+    //Blok teks setinggi 2*24*1.2 = 57.6, di tengah kotak 300..400
+    //atas blok = 300 + (100-57.6)/2 = 321.2; baseline baris pertama di
+    //tengah blok, dikurangi approach tinggi huruf.
+    expect(y).toBeGreaterThan(321.2);
+    expect(y).toBeLessThan(321.2 + 57.6);
+  });
+
+  it('baris kedua berada DI BAWAH baris pertama', () => {
+    const ukuran = 24;
+    const jarak = 1.2;
+    const y1 = posisiYBarisPertama(['Budi', 'Santoso', 'Prakoso'], 300, 200, ukuran, jarak);
+    const y2 = y1 - ukuran * jarak;
+    expect(y2).toBeLessThan(y1);
   });
 });

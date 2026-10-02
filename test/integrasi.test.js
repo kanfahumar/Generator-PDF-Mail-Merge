@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { unzipSync } from 'fflate';
 import fs from 'node:fs/promises';
-import { muatTemplate, buatPdfUndangan } from '../src/pdf.js';
+import { muatTemplate, buatPdfUndangan, gambarUndangan } from '../src/pdf.js';
 import { bacaCsv } from '../src/csv.js';
 import { PengambilNama } from '../src/namaBerkas.js';
 import { buatZip, namaZipUntuk } from '../src/zip.js';
@@ -287,5 +287,71 @@ describe('pipeline ujung-ke-ujung', () => {
     expect(Object.keys(isi)).toHaveLength(200);
     // nama unik, tidak ada yang tertimpa diam-diam
     expect(new Set(Object.keys(isi)).size).toBe(200);
+  });
+});
+
+describe('urutan baris teks harus mengalir ke BAWAH (laporan bug)', () => {
+  const TEKS_DUA_BARIS = 'Kepala Dinas Lingkungan Hidup kabupaten Gunungkidul';
+
+  function kotakSempit() {
+    return {
+      kunci: 'nama',
+      halaman: 0,
+      x: 100,
+      y: 400,
+      lebar: 150, // sempit -> memaksa wrap
+      tinggi: 90,
+      ukuran: 14,
+      minUkuran: 6,
+      warna: '#000000',
+      jarakBaris: 1.2,
+    };
+  }
+
+  it('baris pertama berada DI ATAS baris kedua (y lebih besar)', async () => {
+    const template = await muatTemplate(new File([await templateContoh()], 'u.pdf'));
+    const fontBytes = new Uint8Array(await fs.readFile(FONT));
+
+    const { doc, teksTercetak } = await gambarUndangan(
+      template,
+      [kotakSempit()],
+      fontBytes,
+      { nama: TEKS_DUA_BARIS }
+    );
+    expect(teksTercetak.length).toBeGreaterThanOrEqual(2);
+
+    const bytes = await doc.save({ useObjectStreams: false });
+    const posisi = await posisiTeks(bytes);
+    const nama = posisi.filter((p) =>
+      TEKS_DUA_BARIS.split(' ').some((k) => p.teks.includes(k))
+    );
+    expect(nama.length).toBeGreaterThanOrEqual(2);
+
+    // Baris dengan indeks lebih kecil (baris pertama) harus punya y lebih besar
+    const urut = teksTercetak.map((_, i) => posisi.find((p) => p.teks === teksTercetak[i]));
+    for (let i = 0; i < urut.length - 1; i++) {
+      expect(
+        urut[i].y,
+        `baris "${teksTercetak[i]}" (y=${urut[i].y}) harus DI ATAS baris "${teksTercetak[i + 1]}" (y=${urut[i + 1].y})`
+      ).toBeGreaterThan(urut[i + 1].y);
+    }
+  });
+
+  it('teks dari CSV dengan baris baru eksplisit juga mengalir ke bawah', async () => {
+    const template = await muatTemplate(new File([await templateContoh()], 'u.pdf'));
+    const fontBytes = new Uint8Array(await fs.readFile(FONT));
+
+    // CSV dengan baris baru di dalam kutip
+    const csv = 'nama,alamat\n"Budi Santoso","Jl. A"\n';
+    const tamu = await bacaCsv(new File([csv], 't.csv'));
+    expect(tamu[0].nama).toBe('Budi Santoso');
+
+    const { doc, teksTercetak } = await gambarUndangan(
+      template,
+      [{ ...kotakSempit(), lebar: 300 }],
+      fontBytes,
+      tamu[0].nilai
+    );
+    expect(teksTercetak).toContain('Budi Santoso');
   });
 });

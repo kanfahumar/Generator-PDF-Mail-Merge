@@ -12,7 +12,7 @@ import {
   jenisHanyaSpasi,
   hurufTakDidukung,
   posisiXCenter,
-  posisiYCenter,
+  posisiYBarisPertama,
   tinggiTeks,
   ukurFont,
 } from './teks.js';
@@ -152,7 +152,10 @@ export async function gambarUndangan(template, kotak, fontBytes, data) {
       );
     }
 
-    const yAwal = posisiYCenter(
+    // y di PDF makin ke atas. Baris pertama diletakkan di titik tertinggi,
+    // lalu tiap baris berikutnya turun (y berkurang) supaya teks mengalir ke
+    // bawah seperti di layar.
+    const yBarisPertama = posisiYBarisPertama(
       hasil.baris,
       j.y,
       j.tinggi,
@@ -164,7 +167,7 @@ export async function gambarUndangan(template, kotak, fontBytes, data) {
     hasil.baris.forEach((baris, i) => {
       if (baris.trim() === '') return;
       const x = posisiXCenter(baris, font, j.x, j.lebar, hasil.ukuran);
-      const y = yAwal + i * hasil.ukuran * (j.jarakBaris ?? 1.2);
+      const y = yBarisPertama - i * hasil.ukuran * (j.jarakBaris ?? 1.2);
       halaman.drawText(baris, {
         x,
         y,

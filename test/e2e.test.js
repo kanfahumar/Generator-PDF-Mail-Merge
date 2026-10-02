@@ -64,6 +64,16 @@ afterAll(async () => {
   await browser?.close();
 });
 
+/** Kotak yang sedang aktif (paling akhir dibuat), dengan posisi di layar. */
+async function kotakDiLayar(page) {
+  return page.evaluate(() => {
+    const k = [...document.querySelectorAll('#kontainer-kotak .kotak')].at(-1);
+    if (!k) return null;
+    const r = k.getBoundingClientRect();
+    return { top: r.top, left: r.left, w: r.width, h: r.height };
+  });
+}
+
 describe('end-to-end di Brave', () => {
   it('pengguna bisa membuat undangan berisi nama & alamat dan mengunduh ZIP', async () => {
     // Berkas sementara
@@ -192,6 +202,145 @@ describe('end-to-end di Brave', () => {
     await fs.rm(tmp, { recursive: true, force: true });
     await konteks.close();
   }, 300_000);
+
+  it('menggeser kotak ke bawah di layar => kotak ikut turun', async () => {
+    const tmp = await fs.mkdtemp('/tmp/opencode/e2ey-');
+    await fs.writeFile(`${tmp}/undangan.pdf`, await templateContoh());
+    await fs.writeFile(`${tmp}/tamu.csv`, CSV_TAMU);
+
+    const konteks = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
+    const page = await konteks.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.setInputFiles('#input-pdf', `${tmp}/undangan.pdf`);
+    await page.waitForTimeout(2500);
+    await page.setInputFiles('#input-csv', `${tmp}/tamu.csv`);
+    await page.waitForTimeout(1500);
+    await page.setInputFiles('#input-font', FONT);
+    await page.waitForTimeout(500);
+
+    // Kotak berada jauh di bawah lipatan layar. Tanpa digulir ke kotak itu,
+    // koordinat mouse jatuh di luar viewport dan tidak ada drag sama sekali.
+    await page.locator('#kontainer-kotak .kotak').last().scrollIntoViewIfNeeded();
+    await page.waitForTimeout(400);
+
+    const sebelum = await kotakDiLayar(page);
+    const vp = page.viewportSize();
+    expect(
+      sebelum.top,
+      `kotak di luar viewport (top=${sebelum.top}, tinggi viewport=${vp.height})`
+    ).toBeGreaterThan(0);
+    expect(sebelum.top + sebelum.h).toBeLessThanOrEqual(vp.height);
+
+    // Seret kotak ke bawah sejauh 80px, harus ikut turun
+    await page.mouse.move(sebelum.left + sebelum.w / 2, sebelum.top + sebelum.h / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      sebelum.left + sebelum.w / 2,
+      sebelum.top + sebelum.h / 2 + 80,
+      { steps: 15 }
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    const sesudah = await kotakDiLayar(page);
+    expect(
+      sesudah.top,
+      `kotak seharusnya turun di layar: top ${sebelum.top} -> ${sesudah.top}`
+    ).toBeGreaterThan(sebelum.top + 40);
+
+    // Dan tidak keluar dari kertas
+    const kanvas = await page.locator('#kanvas').boundingBox();
+    expect(sesudah.top).toBeGreaterThanOrEqual(kanvas.y - 1);
+    expect(sesudah.top + sesudah.h).toBeLessThanOrEqual(kanvas.y + kanvas.height + 1);
+
+    await fs.rm(tmp, { recursive: true, force: true });
+    await konteks.close();
+  }, 120_000);
+
+  it('kotak otomatis tersusun ke bawah sesuai urutan kolom', async () => {
+    const tmp = await fs.mkdtemp('/tmp/opencode/e2ez-');
+    await fs.writeFile(`${tmp}/undangan.pdf`, await templateContoh());
+    await fs.writeFile(`${tmp}/tamu.csv`, CSV_TAMU);
+
+    const konteks = await browser.newContext({ viewport: { width: 1100, height: 1000 } });
+    const page = await konteks.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.setInputFiles('#input-pdf', `${tmp}/undangan.pdf`);
+    await page.waitForTimeout(2500);
+    await page.setInputFiles('#input-csv', `${tmp}/tamu.csv`);
+    await page.waitForTimeout(1500);
+
+    const posisi = await page.evaluate(() =>
+      [...document.querySelectorAll('#kontainer-kotak .kotak')].map((k) => ({
+        top: k.getBoundingClientRect().top,
+      }))
+    );
+    // Kolom pertama (nama) harus tampil DI ATAS kolom kedua (alamat)
+    expect(posisi.length).toBeGreaterThanOrEqual(2);
+    expect(posisi[0].top).toBeLessThan(posisi[1].top);
+
+    await fs.rm(tmp, { recursive: true, force: true });
+    await konteks.close();
+  }, 120_000);
+
+  it('baris teks di PDF tersusun ke bawah sesuai urutan baca', async () => {
+    const tmp = await fs.mkdtemp('/tmp/opencode/e2et-');
+    await fs.writeFile(`${tmp}/undangan.pdf`, await templateContoh());
+    // Nilai sengaja panjang supaya membungkus jadi beberapa baris
+    // Baris baru eksplisit di dalam CSV menghasilkan tepat dua baris teks,
+    // sehingga urutannya bisa diperiksa tanpa menebak hasil pemenggalan.
+    await fs.writeFile(
+      `${tmp}/tamu.csv`,
+      'nama,alamat\n"Kepala Dinas Lingkungan Hidup\nkabupaten Gunungkidul","Jl. consequent"\n'
+    );
+
+    const konteks = await browser.newContext({ acceptDownloads: true });
+    const page = await konteks.newPage();
+    await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.setInputFiles('#input-pdf', `${tmp}/undangan.pdf`);
+    await page.waitForTimeout(2500);
+    await page.setInputFiles('#input-csv', `${tmp}/tamu.csv`);
+    await page.setInputFiles('#input-font', FONT);
+    await page.waitForFunction(() => !document.getElementById('tombol-buat').disabled, null, { timeout: 30_000 });
+
+    const [unduhan] = await Promise.all([
+      page.waitForEvent('download', { timeout: 120_000 }),
+      page.click('#tombol-buat'),
+    ]);
+    const zipPath = `${tmp}/h.zip`;
+    await unduhan.saveAs(zipPath);
+    const isi = unzipSync(new Uint8Array(await fs.readFile(zipPath)));
+    const pdf = Object.values(isi)[0];
+
+    const doc = await pdfjs.getDocument({ data: pdf.slice().buffer, useSystemFonts: false }).promise;
+    const isiHalaman = await (await doc.getPage(1)).getTextContent();
+    const baris = isiHalaman.items
+      .filter((i) => i.str.trim())
+      .map((i) => ({ str: i.str.trim(), y: i.transform[5] }));
+
+    // Ambil baris milik tamu ini saja: mulai dari yang memuat "Kepala" sampai
+    // sebelum baris alamat. Urutan baca harus sama dengan urutan vertikal:
+    // di PDF, baris berikutnya selalu punya y lebih kecil (lebih bawah).
+    const mulai = baris.findIndex((b) => b.str.includes('Kepala'));
+    const selesai = baris.findIndex((b) => b.str.includes('Jl. consequent'));
+    expect(mulai, `baris nama tidak ditemukan: ${JSON.stringify(baris.map((b) => b.str))}`).toBeGreaterThanOrEqual(0);
+    expect(selesai).toBeGreaterThan(mulai);
+
+    const barisNama = baris.slice(mulai, selesai);
+    console.log('baris nama:', JSON.stringify(barisNama));
+    expect(barisNama.length, 'nama harus membungkus jadi beberapa baris').toBeGreaterThanOrEqual(2);
+
+    for (let i = 0; i < barisNama.length - 1; i++) {
+      expect(
+        barisNama[i].y,
+        `baris "${barisNama[i].str}" (y=${barisNama[i].y}) harus DI ATAS ` +
+          `baris "${barisNama[i + 1].str}" (y=${barisNama[i + 1].y})`
+      ).toBeGreaterThan(barisNama[i + 1].y);
+    }
+
+    await fs.rm(tmp, { recursive: true, force: true });
+    await konteks.close();
+  }, 180_000);
 
   it('membuat kotak otomatis walau PDF selesai dimuat sebelum CSV dipilih', async () => {
     // Race condition: kotak hanya pernah dibuat kalau CSV kebetulan sudah

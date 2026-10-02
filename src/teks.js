@@ -151,13 +151,17 @@ export function posisiXCenter(baris, pengukur, xKotak, lebarKotak, ukuran) {
 }
 
 /**
- * Baseline baris pertama agar blok teks terpusat vertikal.
- * `ukuran * 0.8` adalah offset baseline di dalam em-box - inilah yang membuat
- * teks terlihat center secara optis, bukan hanya secara matematis.
+ * Baseline (y) untuk baris PERTAMA - yang paling atas - dari blok teks yang
+ * diletakkan di tengah kotak secara vertikal.
+ *
+ * PDF mengukur y dari bawah halaman dan makin ke atas. Jadi untuk membuat teks
+ * mengalir ke bawah (seperti di layar), baris berikutnya harus memakai y yang
+ * BERKURANG. Mengembalikan baris pertama (tertinggi) sebagai titik awal.
  */
-export function posisiYCenter(baris, yKotak, tinggiKotak, ukuran, jarakBaris) {
+export function posisiYBarisPertama(baris, yKotak, tinggiKotak, ukuran, jarakBaris) {
   const tinggiBlok = tinggiTeks(baris, ukuran, jarakBaris);
-  return yKotak + (tinggiKotak - tinggiBlok) / 2 + ukuran * 0.8;
+  const atasBlok = yKotak + (tinggiKotak - tinggiBlok) / 2;
+  return atasBlok + tinggiBlok - ukuran * 0.8;
 }
 
 /**
