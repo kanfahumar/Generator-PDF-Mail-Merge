@@ -81,6 +81,9 @@ async function init() {
       ringkasan.hidden = false;
       ringkasan.innerHTML = `<strong>${daftarTamu.length}</strong> tamu ditemukan.`;
       panel.setKolom(Object.keys(daftarTamu[0]?.nilai ?? { nama: 'nama', alamat: 'alamat' }));
+      // Kotak dibuat setelah KEDUA berkas siap. Fungsi ini idempoten, jadi
+      // aman dipanggil dari handler PDF maupun CSV.
+      buatKotakDefault();
       periksaSiapBuat();
     } catch (err) {
       tampilPesan(aturBahasaError(err));
