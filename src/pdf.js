@@ -6,7 +6,7 @@
  * tidak ada garis. Yang dicetak hanya teksnya.
  */
 
-import { PDFDocument, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, rgb } from 'pdf-lib';
 import fontkit from '@pdf-lib/fontkit';
 import {
   jenisHanyaSpasi,
@@ -105,7 +105,15 @@ export async function gambarUndangan(template, kotak, fontBytes, data) {
 
   for (const kotakRaw of kotak) {
     const k = kotakRaw;
-    if (!Object.prototype.hasOwnProperty.call(data, k.kunci)) continue;
+    // Dulu kondisi ini hanya "continue" diam-diam, sehingga kotak yang salah
+    // kolom membuat PDF kosong tanpa penjelasan apa pun ke pengguna.
+    if (!Object.prototype.hasOwnProperty.call(data, k.kunci)) {
+      peringatan.push(
+        `Kotak diisi dari kolom "${k.kunci}", tapi kolom itu tidak ada di CSV Anda. ` +
+          `Pilih ulang "Isi dengan" pada kotak tersebut.`
+      );
+      continue;
+    }
 
     const teks = String(data[k.kunci] ?? '');
     if (jenisHanyaSpasi(teks)) continue;
@@ -182,31 +190,4 @@ export async function buatPdfUndangan(template, kotak, fontBytes, data) {
   return doc.save({ useObjectStreams: false });
 }
 
-/**
- * Pratinjau: kembalikan Data URL PNG halaman pertama setelah teks ditempel,
- * supaya panel bisa menampilkan hasil yang sama persis dengan PDF akhir.
- */
-export async function pratinjauTamu(template, kotak, fontBytes, data) {
-  const { doc, teksTercetak, peringatan } = await gambarUndangan(
-    template,
-    kotak,
-    fontBytes,
-    data
-  );
-  const halaman = doc.getPage(kotak[0]?.halaman ?? 0);
-  const png = await renderPng(doc, halaman);
-  return { pngUrl: `data:image/png;base64,${png}`, teksTercetak, peringatan };
-}
-
-/** Render satu halaman ke PNG base64 (tanpa prefix data URL). */
-export async function renderPng(doc, halaman) {
-  if (!halaman) throw new GalatPdf('Halaman tidak ditemukan untuk pratinjau.');
-  const bytes = await doc.save({ useObjectStreams: false });
-  let biner = '';
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    biner += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-  }
-  return btoa(biner);
-}
-
-export { PT_PER_INCH, DPI_PREVIEW, degrees };
+export { PT_PER_INCH, DPI_PREVIEW };

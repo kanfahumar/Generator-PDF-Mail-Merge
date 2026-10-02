@@ -39,7 +39,7 @@ export class PanelKotak {
 
     this.kontainer.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     window.addEventListener('pointermove', (e) => this.onPointerMove(e));
-    window.addEventListener('pointerup', () => (this.drag = null));
+    window.addEventListener('pointerup', () => this.selesaiDrag());
     this.selectKolom.addEventListener('change', () => this.syncProperti());
     this.inputUkuran.addEventListener('input', () => this.syncPropertiDariInput());
     this.inputMinUkuran.addEventListener('change', () => this.syncPropertiDariInput());
@@ -88,7 +88,18 @@ export class PanelKotak {
     }
   }
 
+  /**
+   * Tambah satu kotak baru.
+   *
+   * Kotak tidak boleh dibuat sebelum template dimuat: saat itu ukuran halaman
+   * masih 0 sehingga kotaknya jadi selebar 0pt dan teks tergambar sebagai
+   * tumpukan satu huruf. Fungsi ini mengembalikan null bila template belum ada.
+   */
   tambahKotak(kunci = this.selectKolom.value || 'nama') {
+    if (!(this.lebarHalamanPt > 0) || !(this.tinggiHalamanPt > 0)) {
+      console.warn('Kotak tidak dibuat: file PDF belum dimuat.');
+      return null;
+    }
     const w = Math.min(355, this.lebarHalamanPt * 0.6);
     const h = 60;
     const x = (this.lebarHalamanPt - w) / 2;
@@ -109,6 +120,36 @@ export class PanelKotak {
     this.terpilih = this.kotak.length - 1;
     this.refresh();
     return kotak;
+  }
+
+  /**
+   * Berikan ukuran wajar pada kotak yang dibuat sebelum ukuran halaman diketahui
+   * (lebar 0pt). Tanpa ini teks tergambar satu huruf per baris.
+   */
+  perbaikiKotakNol() {
+    if (!(this.lebarHalamanPt > 0) || !(this.tinggiHalamanPt > 0)) return;
+    let berubah = false;
+    for (const k of this.kotak) {
+      if (k.lebar > 0 && k.tinggi > 0) continue;
+      const w = Math.min(355, this.lebarHalamanPt * 0.6);
+      k.lebar = w;
+      k.tinggi = 60;
+      k.x = (this.lebarHalamanPt - w) / 2;
+      k.y = this.tinggiHalamanPt * 0.4;
+      berubah = true;
+    }
+    if (berubah) {
+      // Kotak yang tadinya bertumpuk diberi jarak agar tidak saling menimpa.
+      const sehat = this.kotak.filter((k) => k.lebar > 0 && k.tinggi > 0);
+      if (sehat.length !== this.kotak.length) return;
+      this.kotak.forEach((k, i) => {
+        if (i === 0) return;
+        const sebelumnya = this.kotak[i - 1];
+        const tumpang = k.y < sebelumnya.y + sebelumnya.tinggi;
+        if (tumpang) k.y = sebelumnya.y + sebelumnya.tinggi + 30;
+      });
+      this.refresh();
+    }
   }
 
   hapusTerpilih() {
@@ -185,6 +226,44 @@ export class PanelKotak {
       if (k.y + k.tinggi > this.tinggiHalamanPt) k.tinggi = this.tinggiHalamanPt - k.y;
       this.refresh();
     }
+  }
+
+  /**
+   * Selesai drag: kotakkan hasil tarikan mouse JADI KOTAK PERMANEN.
+   *
+   * Sebelumnya kotak baru hanya digambar sebagai bayangan sementara selama
+   * mouse digerakkan, lalu dibuang begitu tombol mouse dilepas. Akibatnya
+   * kotak yang digambar pengguna tidak pernah tersimpan dan PDF akhirnya
+   * tidak memuat teks sama sekali.
+   */
+  selesaiDrag() {
+    const d = this.drag;
+    this.drag = null;
+    if (!d) return;
+
+    if (d.mode === 'new') {
+      const { x, y, lebar, tinggi } = buatKotakDariTarik(d, this.tinggiHalamanPx);
+      // Klik tanpa menggeser tidak menghasilkan kotak.
+      if (lebar < 20 || tinggi < 10) {
+        this.refresh();
+        return;
+      }
+      this.kotak.push({
+        kunci: this.selectKolom.value || 'nama',
+        halaman: this.halamanAktif,
+        x,
+        y,
+        lebar,
+        tinggi,
+        ukuran: 24,
+        minUkuran: 10,
+        warna: '#000000',
+        jarakBaris: 1.2,
+      });
+      this.terpilih = this.kotak.length - 1;
+    }
+
+    this.refresh();
   }
 
   syncProperti() {

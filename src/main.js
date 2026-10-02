@@ -3,7 +3,7 @@
  */
 
 import { bacaCsv, GalatCsv } from './csv.js';
-import { muatTemplate, buatPdfUndangan, GalatPdf } from './pdf.js';
+import { muatTemplate, gambarUndangan, GalatPdf } from './pdf.js';
 import { PengambilNama } from './namaBerkas.js';
 import { buatZip, namaZipUntuk, unduh } from './zip.js';
 import { PanelKotak } from './ui.js';
@@ -62,6 +62,8 @@ async function init() {
       el('info-pdf').textContent = `${file.name} — ${template.jumlahHalaman} halaman`;
       panel.setTemplate(template);
       await panel.renderHalaman();
+      panel.perbaikiKotakNol();
+      buatKotakDefault();
       periksaSiapBuat();
     } catch (err) {
       tampilPesan(aturBahasaError(err));
@@ -79,15 +81,6 @@ async function init() {
       ringkasan.hidden = false;
       ringkasan.innerHTML = `<strong>${daftarTamu.length}</strong> tamu ditemukan.`;
       panel.setKolom(Object.keys(daftarTamu[0]?.nilai ?? { nama: 'nama', alamat: 'alamat' }));
-      if (panel.kotak.length === 0) {
-        panel.tambahKotak('nama');
-        if (panel.selectKolom.querySelector('option[value="alamat"]')) {
-          const k2 = panel.tambahKotak('alamat');
-          k2.y = k2.y + k2.tinggi + 30;
-        }
-        panel.terpilih = 0;
-        panel.refresh();
-      }
       periksaSiapBuat();
     } catch (err) {
       tampilPesan(aturBahasaError(err));
@@ -130,6 +123,21 @@ async function init() {
   el('tombol-buat').addEventListener('click', buatUndangan);
 }
 
+/** Buat satu kotak untuk setiap kolom yang ada di CSV, bila belum ada kotak. */
+function buatKotakDefault() {
+  if (!panel || !template) return;
+  if (panel.kotak.length > 0) return;
+  const kolom = panel.selectKolom.querySelectorAll('option');
+  let i = 0;
+  for (const opt of kolom) {
+    const k = panel.tambahKotak(opt.value);
+    if (!k) continue;
+    k.y = panel.tinggiHalamanPt * 0.4 + i * 90;
+    i += 1;
+  }
+  panel.refresh();
+}
+
 function periksaSiapBuat() {
   const siap = template && fontBytes && daftarTamu.length > 0 && panel?.kotak.length > 0;
   el('tombol-buat').disabled = !siap;
@@ -138,6 +146,13 @@ function periksaSiapBuat() {
 async function buatUndangan() {
   if (!template || !fontBytes || !daftarTamu.length || !panel) return;
   const kotak = panel.getKotak();
+  if (kotak.length === 0) {
+    tampilPesan(
+      'Belum ada kotak tulisan. Klik-tarik di atas kertas untuk membuat kotak, lalu pilih kolom yang mau dipakai.',
+      9000
+    );
+    return;
+  }
   const ambilNama = new PengambilNama();
   const berkasZip = [];
   const kemajuan = el('kemajuan');
@@ -150,6 +165,8 @@ async function buatUndangan() {
   hasil.hidden = true;
   el('tombol-buat').disabled = true;
   let berhasil = 0;
+  let tanpaTeks = 0;
+  const semuaPeringatan = new Set();
   const total = daftarTamu.length;
 
   try {
@@ -157,19 +174,53 @@ async function buatUndangan() {
       const t = daftarTamu[i];
       const nilai = { ...t.nilai };
       const stem = ambilNama.ambil(t.nama, t.nomor);
-      const pdfBytes = await buatPdfUndangan(template, kotak, fontBytes, nilai);
+      const { doc, teksTercetak, peringatan } = await gambarUndangan(
+        template,
+        kotak,
+        fontBytes,
+        nilai
+      );
+      for (const w of peringatan) semuaPeringatan.add(w);
+      // Tamu yang tidak punya teks sama sekali = hasil tidak berguna.
+      if (teksTercetak.length === 0) tanpaTeks += 1;
+      const pdfBytes = await doc.save({ useObjectStreams: false });
       const namaBerkas = pakaiNamaTamu ? `${stem}.pdf` : `undangan-${t.nomor}.pdf`;
       berkasZip.push({ nama: namaBerkas, data: pdfBytes });
       berhasil += 1;
       const persen = Math.round((berhasil / total) * 100);
       batang.style.width = `${persen}%`;
       teksKemajuan.textContent = `Memproses ${berhasil}/${total} tamu… (${persen}%)`;
+      // Beri jeda supaya peramban sempat melukis bilah kemajuan.
+      await new Promise((r) => setTimeout(r, 0));
     }
+
+    // Jangan sekali-kali mengunduh ZIP yang isinya PDF kosong tanpa penjelasan.
+    if (tanpaTeks === berhasil && berhasil > 0) {
+      hasil.hidden = false;
+      hasil.className = 'hasil salah';
+      hasil.innerHTML =
+        `<strong>Tidak ada teks yang berhasil ditulis.</strong> Periksa:<br>` +
+        (semuaPeringatan.size > 0
+          ? [...semuaPeringatan].map((w) => `• ${w}`).join('<br>') +
+            '<br><br>Perbaiki lalu tekan <em>Buat Undangan</em> lagi. Berkas ZIP sengaja tidak diunduh agar Anda tidak mengunduhundos yang salah.'
+          : '• Pastikan setiap kotak sudah diisi dengan kolom yang benar.<br>• Pastikan ukuran kotak tidak nol (klik-tarik untuk membuat ulang kotak).');
+      kemajuan.hidden = true;
+      el('tombol-buat').disabled = false;
+      return;
+    }
+
     const zipBytes = buatZip(berkasZip);
     const namaZip = namaZipUntuk('undangan');
     unduh(zipBytes, namaZip);
     hasil.hidden = false;
-    hasil.innerHTML = `Berhasil! <strong>${berhasil}</strong> undangan dikemas ke <code>${namaZip}</code> dan diunduh ke folder Downloads.`;
+    hasil.className = 'hasil';
+    hasil.innerHTML =
+      `Berhasil! <strong>${berhasil}</strong> undangan dikemas ke <code>${namaZip}</code> dan diunduh ke folder Downloads.`;
+    if (semuaPeringatan.size > 0) {
+      hasil.innerHTML +=
+        `<br><br><strong>Perhatian:</strong><br>` +
+        [...semuaPeringatan].map((w) => `• ${w}`).join('<br>');
+    }
     kemajuan.hidden = true;
     el('tombol-buat').disabled = false;
   } catch (err) {

@@ -5,7 +5,6 @@ import {
   muatTemplate,
   gambarUndangan,
   buatPdfUndangan,
-  pratinjauTamu,
   ukuranHalamanPt,
 } from '../src/pdf.js';
 
@@ -79,13 +78,15 @@ describe('gambarUndangan', () => {
     expect(hasil.peringatan.length).toBeGreaterThan(0);
   });
 
-  it('melewati kotak yang kuncinya tidak ada di data', async () => {
+  it('melewati kotak yang kuncinya tidak ada di data, DENGAN peringatan', async () => {
     const bytes = await templateA4();
     const tpl = await muatTemplate(new File([bytes], 'undangan.pdf'));
     const fontBytes = await fs.readFile(FONT);
     const hasil = await gambarUndangan(tpl, [kotakAwal()], fontBytes, { alamat: 'Jl. 1' });
     expect(hasil.teksTercetak).toEqual([]);
-    expect(hasil.peringatan).toEqual([]);
+    // Dulu peringatan kosong sehingga user tidak tahu kenapa PDF-nya kosong.
+    expect(hasil.peringatan.length).toBeGreaterThan(0);
+    expect(hasil.peringatan[0]).toMatch(/nama/);
   });
 
   it('memberi peringatan untuk huruf yang tidak didukung font', async () => {
@@ -148,18 +149,44 @@ describe('ukuranHalamanPt', () => {
   });
 });
 
-describe('pratinjauTamu', () => {
-  it('mengembalikan kotak dengan teks contoh terisi', async () => {
-    const bytes = await templateA4();
-    const tpl = await muatTemplate(new File([bytes], 'undangan.pdf'));
+describe('tidak ada kegagalan senyap (bug ke-3)', () => {
+  const sampleKotak = [
+    { kunci: 'nama', halaman: 0, x: 100, y: 300, lebar: 300, tinggi: 50, ukuran: 20, minUkuran: 8, warna: '#000000', jarakBaris: 1.2 },
+  ];
+
+  it('memberi peringatan saat kunci kolom tidak ada di CSV', async () => {
+    const template = await muatTemplate(new File([await templateA4()], 'u.pdf'));
     const fontBytes = await fs.readFile(FONT);
-    const hasil = await pratinjauTamu(
-      tpl,
-      [kotakAwal()],
-      fontBytes,
-      { nama: 'Budi Santoso Wibowo Prakoso' },
-      { nama: 'Budi Santoso Wibowo Prakoso' }
+    const duaKotak = [sampleKotak[0], { ...sampleKotak[0], kunci: 'alamat', y: 200 }];
+    // CSV hanya punya kolom nama - kotak alamat harus dilaporkan
+    const { teksTercetak, peringatan } = await gambarUndangan(
+      template, duaKotak, fontBytes, { nama: 'Budi' }
     );
-    expect(hasil.teksTercetak.join(' ')).toContain('Budi Santoso Wibowo Prakoso');
+    expect(teksTercetak.join(' ')).toContain('Budi');
+    expect(peringatan.some((w) => w.includes('alamat'))).toBe(true);
+  });
+
+  it('memberi peringatan saat nama kotak tidak ada di CSV sama sekali', async () => {
+    const template = await muatTemplate(new File([await templateA4()], 'u.pdf'));
+    const fontBytes = await fs.readFile(FONT);
+    const { teksTercetak, peringatan } = await gambarUndangan(
+      template,
+      [{ ...sampleKotak[0], kunci: 'kolomEntah' }],
+      fontBytes,
+      { nama: 'Budi' }
+    );
+    expect(teksTercetak).toEqual([]);
+    expect(peringatan.length).toBeGreaterThan(0);
+    expect(peringatan[0]).toMatch(/kolomEntah/);
+  });
+
+  it('nilai kosong tidak dianggap error, hanya dilewati diam-diam', async () => {
+    const template = await muatTemplate(new File([await templateA4()], 'u.pdf'));
+    const fontBytes = await fs.readFile(FONT);
+    const { teksTercetak, peringatan } = await gambarUndangan(
+      template, sampleKotak, fontBytes, { nama: '   ' }
+    );
+    expect(teksTercetak).toEqual([]);
+    expect(peringatan).toEqual([]);
   });
 });
